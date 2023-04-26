@@ -7,61 +7,78 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 import sqlite3
 
-conn = sqlite3.connect('main.db')
-cursor = conn.cursor()
-
+# Сдвигает данные влево на одну позицию в таблице stocks_data
 def shift_data_left(cursor):
     for i in range(1, 25):
         cursor.execute(f'UPDATE stocks_data SET "{i}" = "{i + 1}"')
     cursor.execute('UPDATE stocks_data SET "25" = NULL')
 
-def wait_for_more_data(driver):
-    def more_data_loaded(driver):
-        names = driver.find_elements(By.CSS_SELECTOR, "tr.row-RdUXZpkv.listRow")
-        return len(names) > initial_data_count
+# Устанавливает соединение с базой данных и возвращает объекты conn и cursor
+def connect_to_database(database_name):
+    conn = sqlite3.connect(database_name)
+    cursor = conn.cursor()
+    return conn, cursor
 
-    return more_data_loaded
+# Инициализирует веб-драйвер и открывает указанный URL
+def setup_webdriver():
+    browser = webdriver.Chrome()
+    url = 'https://ru.tradingview.com/markets/stocks-russia/market-movers-all-stocks/'
+    browser.get(url)
+    return browser
 
-shift_data_left(cursor)
-conn.commit()
+ # Находит и нажимает кнопку "Осцилляторы" на веб-странице
+def click_oscillators_button(browser):
+    oscillators_buttons = WebDriverWait(browser, 10).until(
+        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "span.content-mf1FlhVw"))
+    )
+    for button in oscillators_buttons:
+        if button.text == "Осцилляторы":
+            button.click()
+            break
 
-browser = webdriver.Chrome()
-url = 'https://ru.tradingview.com/markets/stocks-russia/market-movers-all-stocks/'
-browser.get(url)
+# Загружает все данные на веб-странице, кликая на кнопку "Загрузить еще"
+def load_all_data(browser):
+    names_before = browser.find_elements(By.CSS_SELECTOR, "tr.row-RdUXZpkv.listRow")
 
-oscillators_buttons = WebDriverWait(browser, 10).until(
-    EC.presence_of_all_elements_located((By.CSS_SELECTOR, "span.content-mf1FlhVw"))
-)
-for button in oscillators_buttons:
-    if button.text == "Осцилляторы":
-        button.click()
-        break
+    load_more_button = WebDriverWait(browser, 10).until(
+        EC.visibility_of_element_located((By.CSS_SELECTOR, '.loadButton-SFwfC2e0'))
+    )
+    load_more_button.click()
+    while True:
+        try:
+            load_more_button = WebDriverWait(browser, 10).until(
+                EC.visibility_of_element_located((By.CSS_SELECTOR, '.loadButton-SFwfC2e0'))
+            )
+            load_more_button.click()
+        except StaleElementReferenceException:
+            continue
+        except TimeoutException:
+            break
 
-names_before = browser.find_elements(By.CSS_SELECTOR, "tr.row-RdUXZpkv.listRow")
-initial_data_count = len(names_before)
+    content = browser.page_source
+    soup = BeautifulSoup(content, 'html.parser')
+    return soup
 
-load_more_button = WebDriverWait(browser, 10).until(
-    EC.visibility_of_element_located((By.CSS_SELECTOR, '.loadButton-SFwfC2e0'))
-)
-load_more_button.click()
-while True:
-    try:
-        load_more_button = WebDriverWait(browser, 10).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, '.loadButton-SFwfC2e0'))
-        )
-        load_more_button.click()
-    except StaleElementReferenceException:
-        continue
-    except TimeoutException:
-        break
+# Обрабатывает данные, извлеченные из soup, и обновляет базу данных
+def process_data(soup, cursor, conn):
+    names = soup.find_all("tr", class_="row-RdUXZpkv listRow")
+    nomer = 0
 
-content = browser.page_source
-soup = BeautifulSoup(content, 'html.parser')
+    for item in names:
+        title, ticker, rsi = extract_data_from_item(item)
 
-names = soup.find_all("tr", class_="row-RdUXZpkv listRow")
-nomer = 0
+        # print(f"Компания: {title}  Тикер: {ticker}  rsi(14): {rsi}")
+        nomer += 1
 
-for item in names:
+        try:
+            update_database(cursor, conn, title, ticker, rsi)
+        except sqlite3.Error as e:
+            print(f"Ошибка обновления базы данных: {e}")
+
+    print(f"Всего обнаружено {nomer} акции")
+
+# Извлекает название компании, тикер и RSI из элемента данных
+def extract_data_from_item(item):
     title = item.find("sup", class_="apply-common-tooltip tickerDescription-GrtoTeat").text
     ticker = item.find("a", class_="apply-common-tooltip tickerNameBox-GrtoTeat tickerName-GrtoTeat").text
     rsi_elements = item.find_all("td", class_="cell-RLhfr_y4 right-RLhfr_y4")
@@ -69,28 +86,59 @@ for item in names:
         rsi = rsi_elements[7].text
     else:
         print("There are less than 8 elements on the page.")
+        rsi = None
+    return title, ticker, rsi
 
-    print(f"Компания: {title}  Тикер: {ticker}  rsi(14): {rsi}")
-    nomer += 1
-
-    # Проверка существующих данных в таблице stocks_data
+# Обновляет базу данных, добавляя или обновляя записи с данными о компании
+def update_database(cursor, conn, title, ticker, rsi):
     cursor.execute("SELECT * FROM stocks_data WHERE Company = ?", (title,))
     result = cursor.fetchone()
 
-    # Если результат пуст, добавление данных в таблицу stocks_data
     if result is None:
-        cursor.execute("INSERT INTO stocks_data (Company, Ticker) VALUES (?, ?)", (title, ticker))
+        insert_data(cursor, title, ticker)
 
-    # Если запись с заданным title найдена, обновляем значение в столбце '25'
     if result is not None:
-        cursor.execute("UPDATE stocks_data SET '25' = ? WHERE Company = ?", (rsi, title))
-        conn.commit()
+        update_rsi_value(cursor, conn, title, rsi)
     else:
         print("Запись с заданным title не найдена.")
 
-print(nomer)
-# Закрытие соединения с базой данных
-conn.commit()
-conn.close()
+# Вставляет новую запись в таблицу stocks_data с данными о компании
+def insert_data(cursor, title, ticker):
+    cursor.execute("INSERT INTO stocks_data (Company, Ticker) VALUES (?, ?)", (title, ticker))
 
-browser.quit()
+# Обновляет значение RSI для существующей записи в таблице stocks_data
+def update_rsi_value(cursor, conn, title, rsi):
+    if rsi is not None:
+        cursor.execute("UPDATE stocks_data SET '25' = ? WHERE Company = ?", (rsi, title))
+        conn.commit()
+    else:
+        print("Значение RSI отсутствует.")
+
+def main():
+    try:
+        conn, cursor = connect_to_database('main.db')
+    except sqlite3.Error as e:
+        print(f"Ошибка соединения с базой данных: {e}")
+        exit()
+    shift_data_left(cursor)
+    conn.commit()
+
+    try:
+        browser = setup_webdriver()
+    except Exception as e:
+        print(f"Ошибка при инициализации веб-драйвера: {e}")
+        exit()
+
+    click_oscillators_button(browser)
+    soup = load_all_data(browser)
+    process_data(soup, cursor, conn)
+
+    conn.commit()
+    conn.close()
+    browser.quit()
+
+
+# дописать построение графика по одной из строк значений и сохранение его в папку
+
+if __name__ == "__main__":
+    main()
