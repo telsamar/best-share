@@ -10,12 +10,20 @@ import sqlite3
 conn = sqlite3.connect('main.db')
 cursor = conn.cursor()
 
+def shift_data_left(cursor):
+    for i in range(1, 25):
+        cursor.execute(f'UPDATE stocks_data SET "{i}" = "{i + 1}"')
+    cursor.execute('UPDATE stocks_data SET "25" = NULL')
+
 def wait_for_more_data(driver):
     def more_data_loaded(driver):
         names = driver.find_elements(By.CSS_SELECTOR, "tr.row-RdUXZpkv.listRow")
         return len(names) > initial_data_count
 
     return more_data_loaded
+
+shift_data_left(cursor)
+conn.commit()
 
 browser = webdriver.Chrome()
 url = 'https://ru.tradingview.com/markets/stocks-russia/market-movers-all-stocks/'
@@ -52,6 +60,7 @@ soup = BeautifulSoup(content, 'html.parser')
 
 names = soup.find_all("tr", class_="row-RdUXZpkv listRow")
 nomer = 0
+
 for item in names:
     title = item.find("sup", class_="apply-common-tooltip tickerDescription-GrtoTeat").text
     ticker = item.find("a", class_="apply-common-tooltip tickerNameBox-GrtoTeat tickerName-GrtoTeat").text
@@ -72,7 +81,12 @@ for item in names:
     if result is None:
         cursor.execute("INSERT INTO stocks_data (Company, Ticker) VALUES (?, ?)", (title, ticker))
 
-
+    # Если запись с заданным title найдена, обновляем значение в столбце '25'
+    if result is not None:
+        cursor.execute("UPDATE stocks_data SET '25' = ? WHERE Company = ?", (rsi, title))
+        conn.commit()
+    else:
+        print("Запись с заданным title не найдена.")
 
 print(nomer)
 # Закрытие соединения с базой данных
