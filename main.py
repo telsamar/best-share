@@ -139,7 +139,8 @@ def plot_graph(ticker, conn):
     today = date.today()
     dates = [today - timedelta(days=i) for i in range(0, 25)]
     plt.xticks(columns, [date.strftime("%Y-%m-%d") for date in dates[::-1]], rotation=90, ha='center')
-    filename = f"{ticker}_{today.strftime('%Y-%m-%d')}.png"
+    # filename = f"{ticker}_{today.strftime('%Y-%m-%d')}.png"
+    filename = f"{ticker}.png"
     plt.savefig(f"graph/{filename}", bbox_inches='tight')
 
 def main():
@@ -163,6 +164,7 @@ def main():
     process_data(soup, cursor, conn)
 
     ticker = "ABRD"
+    # реализовать перебор по тикерам
     plot_graph(ticker, conn)
 
     conn.commit()
