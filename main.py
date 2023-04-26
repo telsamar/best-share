@@ -6,6 +6,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 import sqlite3
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import date, timedelta
+
+def clear_data(conn):
+    cursor = conn.cursor()
+    for i in range(1, 25):
+        cursor.execute(f'UPDATE stocks_data SET "{i}" = NULL')
+    conn.commit()
 
 # Сдвигает данные влево на одну позицию в таблице stocks_data
 def shift_data_left(cursor):
@@ -114,6 +123,25 @@ def update_rsi_value(cursor, conn, title, rsi):
     else:
         print("Значение RSI отсутствует.")
 
+# Построение графика 
+def plot_graph(ticker, conn):
+    df = pd.read_sql_query(f"SELECT * FROM stocks_data WHERE Ticker = '{ticker}'", conn)
+    if df.empty:
+        print(f"Данные для {ticker} не найдены.")
+        return
+    columns = [str(i) for i in range(1, 26)]
+    data = df.loc[:, columns].values[0]
+    plt.plot(columns, data)
+    plt.title(f"График RSI (14) 1д для {ticker}")
+    plt.xlabel("Период")
+    plt.ylabel("Значение RSI")
+    plt.ylim([0, 100])
+    today = date.today()
+    dates = [today - timedelta(days=i) for i in range(0, 25)]
+    plt.xticks(columns, [date.strftime("%Y-%m-%d") for date in dates[::-1]], rotation=90, ha='center')
+    filename = f"{ticker}_{today.strftime('%Y-%m-%d')}.png"
+    plt.savefig(f"graph/{filename}", bbox_inches='tight')
+
 def main():
     try:
         conn, cursor = connect_to_database('main.db')
@@ -121,6 +149,7 @@ def main():
         print(f"Ошибка соединения с базой данных: {e}")
         exit()
     shift_data_left(cursor)
+    # clear_data(conn)
     conn.commit()
 
     try:
@@ -133,12 +162,12 @@ def main():
     soup = load_all_data(browser)
     process_data(soup, cursor, conn)
 
+    ticker = "ABRD"
+    plot_graph(ticker, conn)
+
     conn.commit()
     conn.close()
     browser.quit()
-
-
-# дописать построение графика по одной из строк значений и сохранение его в папку
 
 if __name__ == "__main__":
     main()
