@@ -15,10 +15,11 @@ import time
 import os
 
 # Сдвигает данные влево на одну позицию в таблице stocks_data
-def shift_data_left(cursor):
+def shift_data_left(cursor, conn):
     for i in range(1, 25):
         cursor.execute(f'UPDATE stocks_data SET "{i}" = "{i + 1}"')
     cursor.execute('UPDATE stocks_data SET "25" = NULL')
+    conn.commit()
 
 # Устанавливает соединение с базой данных и возвращает объекты conn и cursor
 def connect_to_database(database_name):
@@ -61,7 +62,7 @@ def load_all_data(browser):
     soup = BeautifulSoup(content, 'html.parser')
     return soup
 
-# Обрабатывает данные, извлеченные из soup, и обновляет базу данных
+# Обрабатывает данные, извлеченные из soup rsi, и обновляет базу данных
 def process_data(soup, cursor, conn):
     names = soup.find_all("tr", class_="row-RdUXZpkv listRow")
     nomer = 0
@@ -132,7 +133,7 @@ def plot_graph(ticker, conn):
             processed_data.append(np.nan)
         else:
             processed_data.append(float(x))
-    plt.plot(columns, processed_data)
+    plt.plot(columns, processed_data, marker='o', markersize=4)  # Установка жирности точек
     plt.title(f"График RSI (14) 1д для {ticker}")
     plt.xlabel("Период")
     plt.ylabel("Значение RSI")
@@ -140,15 +141,18 @@ def plot_graph(ticker, conn):
     today = date.today()
     dates = [today - timedelta(days=i) for i in range(0, 25)]
     plt.xticks(columns, [date.strftime("%Y-%m-%d") for date in dates[::-1]], rotation=90, ha='center')
+    # Добавление подписей значений по оси Y рядом с точками
+    for i, value in enumerate(processed_data):
+        if not np.isnan(value):
+            plt.text(i, value + 2, f"{value:.1f}", ha='left', va='bottom', fontsize=8, rotation=90)
+
     filename = f"{ticker}.png"    
     plt.savefig(f"graph/{filename}", bbox_inches='tight')
     plt.clf()
 
-def main():
-    print("Запуск задачи...")
-    graph_directory = "graph"
-    for filename in os.listdir(graph_directory):
-        file_path = os.path.join(graph_directory, filename)
+def clear_directory(directory):
+    for filename in os.listdir(directory):
+        file_path = os.path.join(directory, filename)
         try:
             if os.path.isfile(file_path) or os.path.islink(file_path):
                 os.unlink(file_path)  # Удаляем файлы и символические ссылки
@@ -157,14 +161,22 @@ def main():
         except Exception as e:
             print(f"Ошибка при удалении {file_path}: {e}")
 
+def connect_to_db_and_shift_data():
     try:
         conn, cursor = connect_to_database('main.db')
     except sqlite3.Error as e:
         print(f"Ошибка соединения с базой данных: {e}")
         exit()
-    shift_data_left(cursor)
-    conn.commit()
+    return conn, cursor
 
+
+def main():
+    print("Запуск задачи...")
+    graph_directory = "graph"
+    clear_directory(graph_directory)
+    conn, cursor = connect_to_db_and_shift_data()
+    shift_data_left(cursor, conn)
+    
     try:
         browser = setup_webdriver()
     except Exception as e:
@@ -185,8 +197,7 @@ if __name__ == "__main__":
     # schedule.every().day.at("13:37").do(main)
     main()
     print("Ожидание выполнения задачи.")
-    # Бесконечный цикл, который проверяет запланированные задачи и выполняет их
     while True:
         schedule.run_pending()
-        time.sleep(10)  # Ждать 60 секунд перед повторной проверкой
+        time.sleep(60)  # Ждать 60 секунд перед повторной проверкой
     print("Задача выполнена.")
