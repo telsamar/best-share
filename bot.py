@@ -2,7 +2,7 @@ import os
 import io
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from PIL import Image
-from token import TOKEN
+from token_telegram import TOKEN_TG
 
 # функция для обработки команды /start
 def start(update, context):
@@ -41,7 +41,7 @@ def get_graph(update, context):
         context.bot.send_photo(chat_id=update.effective_chat.id, photo=bio)
 
 # создаем экземпляр Updater и задаем токен
-updater = Updater(TOKEN, use_context=True)
+updater = Updater(TOKEN_TG, use_context=True)
 
 # добавляем обработчики команд и сообщений
 updater.dispatcher.add_handler(CommandHandler("start", start))

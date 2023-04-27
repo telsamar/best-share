@@ -7,14 +7,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 import sqlite3
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 from datetime import date, timedelta
-
-def clear_data(conn):
-    cursor = conn.cursor()
-    for i in range(1, 25):
-        cursor.execute(f'UPDATE stocks_data SET "{i}" = NULL')
-    conn.commit()
+import schedule
+import time
 
 # Сдвигает данные влево на одну позицию в таблице stocks_data
 def shift_data_left(cursor):
@@ -78,11 +75,13 @@ def process_data(soup, cursor, conn):
 
         # print(f"Компания: {title}  Тикер: {ticker}  rsi(14): {rsi}")
         nomer += 1
-
+        
         try:
             update_database(cursor, conn, title, ticker, rsi)
         except sqlite3.Error as e:
             print(f"Ошибка обновления базы данных: {e}")
+
+        plot_graph(ticker, conn)
 
     print(f"Всего обнаружено {nomer} акции")
 
@@ -131,7 +130,13 @@ def plot_graph(ticker, conn):
         return
     columns = [str(i) for i in range(1, 26)]
     data = df.loc[:, columns].values[0]
-    plt.plot(columns, data)
+    processed_data = []
+    for x in data:
+        if x in ["—", None]:
+            processed_data.append(np.nan)
+        else:
+            processed_data.append(float(x))
+    plt.plot(columns, processed_data)
     plt.title(f"График RSI (14) 1д для {ticker}")
     plt.xlabel("Период")
     plt.ylabel("Значение RSI")
@@ -139,18 +144,30 @@ def plot_graph(ticker, conn):
     today = date.today()
     dates = [today - timedelta(days=i) for i in range(0, 25)]
     plt.xticks(columns, [date.strftime("%Y-%m-%d") for date in dates[::-1]], rotation=90, ha='center')
-    # filename = f"{ticker}_{today.strftime('%Y-%m-%d')}.png"
     filename = f"{ticker}.png"
+    # graph_directory = "graph"
+    # for filename in os.listdir(graph_directory):
+    #     file_path = os.path.join(graph_directory, filename)
+    #     try:
+    #         if os.path.isfile(file_path) or os.path.islink(file_path):
+    #             os.unlink(file_path)  # Удаляем файлы и символические ссылки
+    #         elif os.path.isdir(file_path):
+    #             shutil.rmtree(file_path)  # Удаляем папки
+    #     except Exception as e:
+    #         print(f"Ошибка при удалении {file_path}: {e}")
+
+    
     plt.savefig(f"graph/{filename}", bbox_inches='tight')
+    plt.clf()
 
 def main():
+    print("Запуск задачи...")
     try:
         conn, cursor = connect_to_database('main.db')
     except sqlite3.Error as e:
         print(f"Ошибка соединения с базой данных: {e}")
         exit()
     shift_data_left(cursor)
-    # clear_data(conn)
     conn.commit()
 
     try:
@@ -163,13 +180,17 @@ def main():
     soup = load_all_data(browser)
     process_data(soup, cursor, conn)
 
-    ticker = "ABRD"
-    # реализовать перебор по тикерам
-    plot_graph(ticker, conn)
-
     conn.commit()
     conn.close()
     browser.quit()
+    print("Задача завершена.")
 
 if __name__ == "__main__":
-    main()
+    print("Начата задача по расписанию.")
+    schedule.every().day.at("10:00").do(main)
+    print("Ожидание выполнения задачи.")
+    # Бесконечный цикл, который проверяет запланированные задачи и выполняет их
+    while True:
+        schedule.run_pending()
+        time.sleep(60)  # Ждать 60 секунд перед повторной проверкой
+    print("Задача выполнена.")
