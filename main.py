@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from datetime import date, timedelta
 import schedule
 import time
+import os
 
 # Сдвигает данные влево на одну позицию в таблице stocks_data
 def shift_data_left(cursor):
@@ -45,11 +46,6 @@ def click_oscillators_button(browser):
 # Загружает все данные на веб-странице, кликая на кнопку "Загрузить еще"
 def load_all_data(browser):
     names_before = browser.find_elements(By.CSS_SELECTOR, "tr.row-RdUXZpkv.listRow")
-
-    load_more_button = WebDriverWait(browser, 10).until(
-        EC.visibility_of_element_located((By.CSS_SELECTOR, '.loadButton-SFwfC2e0'))
-    )
-    load_more_button.click()
     while True:
         try:
             load_more_button = WebDriverWait(browser, 10).until(
@@ -144,24 +140,23 @@ def plot_graph(ticker, conn):
     today = date.today()
     dates = [today - timedelta(days=i) for i in range(0, 25)]
     plt.xticks(columns, [date.strftime("%Y-%m-%d") for date in dates[::-1]], rotation=90, ha='center')
-    filename = f"{ticker}.png"
-    # graph_directory = "graph"
-    # for filename in os.listdir(graph_directory):
-    #     file_path = os.path.join(graph_directory, filename)
-    #     try:
-    #         if os.path.isfile(file_path) or os.path.islink(file_path):
-    #             os.unlink(file_path)  # Удаляем файлы и символические ссылки
-    #         elif os.path.isdir(file_path):
-    #             shutil.rmtree(file_path)  # Удаляем папки
-    #     except Exception as e:
-    #         print(f"Ошибка при удалении {file_path}: {e}")
-
-    
+    filename = f"{ticker}.png"    
     plt.savefig(f"graph/{filename}", bbox_inches='tight')
     plt.clf()
 
 def main():
     print("Запуск задачи...")
+    graph_directory = "graph"
+    for filename in os.listdir(graph_directory):
+        file_path = os.path.join(graph_directory, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)  # Удаляем файлы и символические ссылки
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)  # Удаляем папки
+        except Exception as e:
+            print(f"Ошибка при удалении {file_path}: {e}")
+
     try:
         conn, cursor = connect_to_database('main.db')
     except sqlite3.Error as e:
@@ -187,10 +182,11 @@ def main():
 
 if __name__ == "__main__":
     print("Начата задача по расписанию.")
-    schedule.every().day.at("10:00").do(main)
+    # schedule.every().day.at("13:37").do(main)
+    main()
     print("Ожидание выполнения задачи.")
     # Бесконечный цикл, который проверяет запланированные задачи и выполняет их
     while True:
         schedule.run_pending()
-        time.sleep(60)  # Ждать 60 секунд перед повторной проверкой
+        time.sleep(10)  # Ждать 60 секунд перед повторной проверкой
     print("Задача выполнена.")
