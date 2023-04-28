@@ -33,9 +33,13 @@ def get_graph(update, context):
         bio.seek(0)
         context.bot.send_photo(chat_id=update.effective_chat.id, photo=bio)
 
-updater = Updater(TOKEN_TG, use_context=True)
+def start_bot():
+    updater = Updater(TOKEN_TG, use_context=True)
 
-updater.dispatcher.add_handler(CommandHandler("start", start))
-updater.dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, get_graph))
+    updater.dispatcher.add_handler(CommandHandler("start", start))
+    updater.dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, get_graph))
 
-updater.start_polling()
+    updater.start_polling()
+    updater.idle()  # Добавьте эту строку, чтобы бот продолжал работать, пока его не остановят
+
+# start_bot()

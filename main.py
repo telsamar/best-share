@@ -43,6 +43,8 @@ def click_oscillators_button(browser):
         if button.text == "Осцилляторы":
             button.click()
             break
+    
+    print("кнопка Осцилляторы нажата")
 
 # Загружает все данные на веб-странице, кликая на кнопку "Загрузить еще"
 def load_all_data(browser):
@@ -70,7 +72,7 @@ def process_data(soup, cursor, conn):
     for item in names:
         title, ticker, rsi = extract_data_from_item(item)
 
-        # print(f"Компания: {title}  Тикер: {ticker}  rsi(14): {rsi}")
+        print(f"Компания: {title}  Тикер: {ticker}  rsi(14): {rsi}")
         nomer += 1
         
         try:
