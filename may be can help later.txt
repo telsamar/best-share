@@ -1,0 +1,5 @@
+API:
+https://www.alphavantage.co/documentation/
+https://finnhub.io/docs/api/stock-candles
+https://twelvedata.com/docs#getting-started
+
